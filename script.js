@@ -1,154 +1,198 @@
-// EditX Studio - Main JavaScript File
-
 // Global variables
-let currentTab = 'image';
-let selectedTool = 'select';
-let isLoggedIn = false;
 let currentUser = null;
+let isLoginMode = true;
+let currentTab = 'image';
+let currentTool = 'select';
+let currentPanel = 'properties';
+let layers = [];
+let selectedLayer = null;
 let canvas = null;
 let ctx = null;
-let layers = [];
-let currentLayer = null;
-
-// DOM elements
-const loginModal = document.getElementById('loginModal');
-const editorModal = document.getElementById('editorModal');
-const fileInput = document.getElementById('fileInput');
-const mainCanvas = document.getElementById('mainCanvas');
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     setupEventListeners();
     setupCanvas();
+    loadUserSession();
 });
 
 // Initialize the application
 function initializeApp() {
-    console.log('🎨 EditX Studio initialized');
+    console.log('EditX Studio initialized');
     
-    // Check if user is logged in
-    const savedUser = localStorage.getItem('editx_user');
-    if (savedUser) {
-        currentUser = JSON.parse(savedUser);
-        isLoggedIn = true;
-        console.log('User logged in:', currentUser.name);
-    }
-    
-    // Add animations to elements
-    addAnimations();
+    // Add fade-in animation to elements
+    const elements = document.querySelectorAll('.feature-card, .premium-item');
+    elements.forEach((element, index) => {
+        element.style.animationDelay = `${index * 0.1}s`;
+        element.classList.add('fade-in');
+    });
 }
 
 // Setup event listeners
 function setupEventListeners() {
-    // Smooth scrolling for navigation links
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                target.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }
-        });
-    });
-
-    // Close modals when clicking outside
-    window.addEventListener('click', function(e) {
-        if (e.target === loginModal) {
-            closeModal();
-        }
-        if (e.target === editorModal) {
-            closeEditor();
-        }
-    });
-
-    // Close modals with Escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeModal();
-            closeEditor();
-        }
-    });
-
     // Form submission
     const authForm = document.getElementById('authForm');
     if (authForm) {
         authForm.addEventListener('submit', handleAuthSubmit);
     }
-
+    
+    // Modal close on backdrop click
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    });
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', handleKeyboardShortcuts);
+    
     // Canvas drag and drop
-    if (mainCanvas) {
-        mainCanvas.addEventListener('dragover', handleDragOver);
-        mainCanvas.addEventListener('drop', handleDrop);
-        mainCanvas.addEventListener('click', handleCanvasClick);
-    }
+    setupCanvasDragDrop();
 }
 
 // Setup canvas
 function setupCanvas() {
-    if (mainCanvas) {
-        canvas = mainCanvas;
+    canvas = document.getElementById('mainCanvas');
+    if (canvas) {
         ctx = canvas.getContext('2d');
         
         // Set canvas background
-        ctx.fillStyle = '#f1f5f9';
+        ctx.fillStyle = '#f8fafc';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        console.log('Canvas initialized');
+        // Add initial layer
+        addLayer('Background', 'background');
     }
 }
 
-// Add animations to elements
-function addAnimations() {
-    // Animate feature cards on scroll
-    const observerOptions = {
-        threshold: 0.1,
-        rootMargin: '0px 0px -50px 0px'
-    };
-
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.classList.add('fade-in');
+// Setup canvas drag and drop
+function setupCanvasDragDrop() {
+    const canvasContainer = document.querySelector('.canvas-container');
+    if (canvasContainer) {
+        canvasContainer.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            canvasContainer.style.borderColor = '#0ea5e9';
+        });
+        
+        canvasContainer.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            canvasContainer.style.borderColor = '#e2e8f0';
+        });
+        
+        canvasContainer.addEventListener('drop', function(e) {
+            e.preventDefault();
+            canvasContainer.style.borderColor = '#e2e8f0';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload({ target: { files: files } });
             }
         });
-    }, observerOptions);
+    }
+}
 
-    document.querySelectorAll('.feature-card, .premium-item').forEach(el => {
-        observer.observe(el);
-    });
+// Handle keyboard shortcuts
+function handleKeyboardShortcuts(e) {
+    // Ctrl/Cmd + O to open file
+    if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+        e.preventDefault();
+        importFile();
+    }
+    
+    // Ctrl/Cmd + S to save
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveProject();
+    }
+    
+    // Ctrl/Cmd + E to export
+    if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault();
+        exportProject();
+    }
+    
+    // Escape to close modals
+    if (e.key === 'Escape') {
+        closeModal();
+    }
+    
+    // Delete key to delete selected layer
+    if (e.key === 'Delete' && selectedLayer) {
+        deleteLayer(selectedLayer);
+    }
 }
 
 // Modal functions
 function showLogin() {
-    loginModal.style.display = 'block';
-    document.body.style.overflow = 'hidden';
+    const modal = document.getElementById('loginModal');
+    if (modal) {
+        modal.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+    }
 }
 
 function closeModal() {
-    loginModal.style.display = 'none';
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        modal.style.display = 'none';
+    });
     document.body.style.overflow = 'auto';
 }
 
 function openEditor() {
-    if (!isLoggedIn) {
-        showLogin();
-        return;
+    const modal = document.getElementById('editorModal');
+    if (modal) {
+        modal.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+        setupEditor();
     }
-    
-    editorModal.style.display = 'block';
-    document.body.style.overflow = 'hidden';
-    
-    // Initialize editor
-    initializeEditor();
 }
 
 function closeEditor() {
-    editorModal.style.display = 'none';
-    document.body.style.overflow = 'auto';
+    const modal = document.getElementById('editorModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+}
+
+// Setup editor
+function setupEditor() {
+    // Initialize canvas if not already done
+    if (!canvas) {
+        setupCanvas();
+    }
+    
+    // Update UI based on current state
+    updateEditorUI();
+}
+
+// Update editor UI
+function updateEditorUI() {
+    // Update tool buttons
+    const toolButtons = document.querySelectorAll('.tool-btn');
+    toolButtons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('onclick')?.includes(currentTool)) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update panel tabs
+    const panelTabs = document.querySelectorAll('.panel-tab');
+    panelTabs.forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.getAttribute('onclick')?.includes(currentPanel)) {
+            tab.classList.add('active');
+        }
+    });
+    
+    // Update layers list
+    updateLayersList();
 }
 
 // Authentication functions
@@ -157,76 +201,78 @@ function handleAuthSubmit(e) {
     
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
-    const name = document.getElementById('name').value;
-    const isSignUp = document.getElementById('nameField').style.display !== 'none';
+    const name = document.getElementById('name')?.value || '';
     
-    // Simulate authentication
-    showLoadingState();
+    if (isLoginMode) {
+        loginUser(email, password);
+    } else {
+        signupUser(email, password, name);
+    }
+}
+
+function loginUser(email, password) {
+    // Simulate login process
+    showNotification('Signing in...', 'info');
     
     setTimeout(() => {
-        if (isSignUp) {
-            // Sign up
-            currentUser = {
-                id: Date.now().toString(),
-                name: name,
-                email: email,
-                plan: 'free'
-            };
-        } else {
-            // Sign in
-            currentUser = {
-                id: '1',
-                name: email.split('@')[0],
-                email: email,
-                plan: 'free'
-            };
-        }
+        // For demo purposes, accept any email/password
+        currentUser = {
+            id: '1',
+            email: email,
+            name: email.split('@')[0],
+            avatar: null
+        };
         
-        isLoggedIn = true;
         localStorage.setItem('editx_user', JSON.stringify(currentUser));
-        
-        hideLoadingState();
+        showNotification('Successfully signed in!', 'success');
         closeModal();
+        updateUserUI();
+    }, 1000);
+}
+
+function signupUser(email, password, name) {
+    // Simulate signup process
+    showNotification('Creating account...', 'info');
+    
+    setTimeout(() => {
+        currentUser = {
+            id: '1',
+            email: email,
+            name: name || email.split('@')[0],
+            avatar: null
+        };
         
-        if (isSignUp) {
-            showNotification('Account created successfully!', 'success');
-        } else {
-            showNotification('Welcome back!', 'success');
-        }
-        
-        // Open editor if it was requested
-        if (editorModal.style.display === 'block') {
-            initializeEditor();
-        }
-    }, 2000);
+        localStorage.setItem('editx_user', JSON.stringify(currentUser));
+        showNotification('Account created successfully!', 'success');
+        closeModal();
+        updateUserUI();
+    }, 1000);
 }
 
 function toggleAuthMode() {
-    const nameField = document.getElementById('nameField');
-    const rememberField = document.getElementById('rememberField');
+    isLoginMode = !isLoginMode;
+    
     const modalTitle = document.getElementById('modalTitle');
     const submitText = document.getElementById('submitText');
     const toggleText = document.getElementById('toggleText');
     const toggleButton = document.getElementById('toggleButton');
+    const nameField = document.getElementById('nameField');
+    const rememberField = document.getElementById('rememberField');
     
-    const isCurrentlySignUp = nameField.style.display !== 'none';
-    
-    if (isCurrentlySignUp) {
-        // Switch to sign in
-        nameField.style.display = 'none';
-        rememberField.style.display = 'flex';
+    if (isLoginMode) {
         modalTitle.textContent = 'Welcome back';
         submitText.textContent = 'Sign In';
         toggleText.textContent = "Don't have an account?";
         toggleButton.textContent = 'Sign up';
+        nameField.style.display = 'none';
+        rememberField.style.display = 'flex';
     } else {
-        // Switch to sign up
-        nameField.style.display = 'block';
-        rememberField.style.display = 'none';
-        modalTitle.textContent = 'Create your account';
-        submitText.textContent = 'Create Account';
+        modalTitle.textContent = 'Create account';
+        submitText.textContent = 'Sign Up';
         toggleText.textContent = 'Already have an account?';
         toggleButton.textContent = 'Sign in';
+        nameField.style.display = 'block';
+        rememberField.style.display = 'none';
     }
 }
 
@@ -243,45 +289,44 @@ function togglePassword() {
     }
 }
 
-// Editor functions
-function initializeEditor() {
-    console.log('Initializing editor...');
-    
-    // Reset canvas
-    if (ctx) {
-        ctx.fillStyle = '#f1f5f9';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    
-    // Initialize layers
-    layers = [
-        {
-            id: 1,
-            name: 'Background',
-            type: 'background',
-            visible: true,
-            locked: false,
-            opacity: 1
-        }
-    ];
-    
-    currentLayer = layers[0];
-    updateLayersList();
-    
-    // Hide upload prompt if canvas has content
-    const overlay = document.querySelector('.canvas-overlay');
-    if (overlay) {
-        overlay.style.display = 'none';
+// Load user session
+function loadUserSession() {
+    const userData = localStorage.getItem('editx_user');
+    if (userData) {
+        currentUser = JSON.parse(userData);
+        updateUserUI();
     }
 }
 
+// Update user UI
+function updateUserUI() {
+    if (currentUser) {
+        // Update navigation
+        const navActions = document.querySelector('.nav-actions');
+        if (navActions) {
+            navActions.innerHTML = `
+                <span style="color: var(--gray-600);">Welcome, ${currentUser.name}</span>
+                <button class="btn btn-primary" onclick="openEditor()">Open Editor</button>
+                <button class="btn btn-secondary" onclick="logout()">Sign Out</button>
+            `;
+        }
+    }
+}
+
+// Logout function
+function logout() {
+    currentUser = null;
+    localStorage.removeItem('editx_user');
+    location.reload();
+}
+
+// Editor functions
 function switchTab(tab) {
     currentTab = tab;
     
     // Update tab buttons
-    document.querySelectorAll('.tool-tab').forEach(btn => {
-        btn.classList.remove('active');
-    });
+    const tabButtons = document.querySelectorAll('.tool-tab');
+    tabButtons.forEach(btn => btn.classList.remove('active'));
     event.target.classList.add('active');
     
     // Show/hide tool sections
@@ -301,15 +346,12 @@ function switchTab(tab) {
 }
 
 function selectTool(tool) {
-    selectedTool = tool;
+    currentTool = tool;
     
     // Update tool buttons
-    document.querySelectorAll('.tool-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
-    console.log('Selected tool:', tool);
+    const toolButtons = document.querySelectorAll('.tool-btn');
+    toolButtons.forEach(btn => btn.classList.remove('active'));
+    event.target.closest('.tool-btn').classList.add('active');
     
     // Handle tool-specific actions
     switch (tool) {
@@ -317,156 +359,149 @@ function selectTool(tool) {
             addTextLayer();
             break;
         case 'crop':
-            enableCropMode();
+            showNotification('Crop tool selected. Click and drag to select area.', 'info');
+            break;
+        case 'rotate':
+            if (selectedLayer) {
+                rotateLayer(selectedLayer, 90);
+            }
             break;
         case 'filter':
-            showFiltersPanel();
+            showNotification('Filter panel opened', 'info');
             break;
         case 'ai':
-            showAITools();
+            showNotification('AI tools panel opened', 'info');
             break;
     }
 }
 
 function switchPanel(panel) {
+    currentPanel = panel;
+    
     // Update panel tabs
-    document.querySelectorAll('.panel-tab').forEach(btn => {
-        btn.classList.remove('active');
-    });
+    const panelTabs = document.querySelectorAll('.panel-tab');
+    panelTabs.forEach(btn => btn.classList.remove('active'));
     event.target.classList.add('active');
     
     // Show/hide panel sections
-    const panels = ['properties', 'layers', 'assets'];
-    panels.forEach(p => {
-        const panelElement = document.getElementById(p + 'Panel');
-        if (panelElement) {
-            panelElement.style.display = p === panel ? 'block' : 'none';
-        }
-    });
+    const panels = document.querySelectorAll('.panel-section');
+    panels.forEach(p => p.style.display = 'none');
+    
+    const targetPanel = document.getElementById(panel + 'Panel');
+    if (targetPanel) {
+        targetPanel.style.display = 'block';
+    }
 }
 
-// File handling
+// File handling functions
 function importFile() {
+    const fileInput = document.getElementById('fileInput');
     fileInput.click();
 }
 
 function handleFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (files.length === 0) return;
     
+    const file = files[0];
+    
+    if (file.type.startsWith('image/')) {
+        handleImageUpload(file);
+    } else if (file.type.startsWith('video/')) {
+        handleVideoUpload(file);
+    } else {
+        showNotification('Unsupported file type', 'error');
+    }
+}
+
+function handleImageUpload(file) {
     const reader = new FileReader();
     reader.onload = function(e) {
         const img = new Image();
         img.onload = function() {
-            addImageToCanvas(img);
+            // Add image layer
+            addImageLayer(img, file.name);
+            showNotification(`Image "${file.name}" imported successfully`, 'success');
         };
         img.src = e.target.result;
     };
     reader.readAsDataURL(file);
 }
 
-function addImageToCanvas(img) {
-    if (!ctx) return;
-    
-    // Calculate dimensions to fit canvas
-    const canvasRatio = canvas.width / canvas.height;
-    const imgRatio = img.width / img.height;
-    
-    let drawWidth, drawHeight, x, y;
-    
-    if (imgRatio > canvasRatio) {
-        drawWidth = canvas.width * 0.8;
-        drawHeight = drawWidth / imgRatio;
-        x = (canvas.width - drawWidth) / 2;
-        y = (canvas.height - drawHeight) / 2;
-    } else {
-        drawHeight = canvas.height * 0.8;
-        drawWidth = drawHeight * imgRatio;
-        x = (canvas.width - drawWidth) / 2;
-        y = (canvas.height - drawHeight) / 2;
-    }
-    
-    // Draw image
-    ctx.drawImage(img, x, y, drawWidth, drawHeight);
-    
-    // Hide upload prompt
-    const overlay = document.querySelector('.canvas-overlay');
-    if (overlay) {
-        overlay.style.display = 'none';
-    }
-    
-    // Add to layers
-    const newLayer = {
+function handleVideoUpload(file) {
+    showNotification(`Video "${file.name}" imported successfully`, 'success');
+    // For demo purposes, just show notification
+    // In a real app, you'd process the video
+}
+
+function addImageLayer(img, name) {
+    const layer = {
         id: Date.now(),
-        name: 'Image Layer',
+        name: name,
         type: 'image',
         visible: true,
         locked: false,
-        opacity: 1,
-        data: {
-            x: x,
-            y: y,
-            width: drawWidth,
-            height: drawHeight,
-            image: img
-        }
-    };
-    
-    layers.push(newLayer);
-    currentLayer = newLayer;
-    updateLayersList();
-    
-    showNotification('Image imported successfully!', 'success');
-}
-
-// Canvas event handlers
-function handleDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-    
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-        const file = files[0];
-        if (file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = new Image();
-                img.onload = function() {
-                    addImageToCanvas(img);
-                };
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
-    }
-}
-
-function handleCanvasClick(e) {
-    if (selectedTool === 'text') {
-        addTextAtPosition(e.offsetX, e.offsetY);
-    }
-}
-
-// Layer management
-function addLayer() {
-    const newLayer = {
-        id: Date.now(),
-        name: 'New Layer',
-        type: 'empty',
-        visible: true,
-        locked: false,
+        image: img,
+        x: 50,
+        y: 50,
+        width: img.width,
+        height: img.height,
+        rotation: 0,
         opacity: 1
     };
     
-    layers.push(newLayer);
-    currentLayer = newLayer;
+    layers.push(layer);
+    selectedLayer = layer;
     updateLayersList();
+    redrawCanvas();
+}
+
+function addTextLayer() {
+    const text = prompt('Enter text:');
+    if (!text) return;
     
-    showNotification('New layer added!', 'success');
+    const layer = {
+        id: Date.now(),
+        name: 'Text Layer',
+        type: 'text',
+        visible: true,
+        locked: false,
+        text: text,
+        x: 100,
+        y: 100,
+        fontSize: 24,
+        fontFamily: 'Arial',
+        color: '#000000',
+        rotation: 0,
+        opacity: 1
+    };
+    
+    layers.push(layer);
+    selectedLayer = layer;
+    updateLayersList();
+    redrawCanvas();
+}
+
+// Layer management
+function addLayer(name = 'New Layer', type = 'empty') {
+    const layer = {
+        id: Date.now(),
+        name: name,
+        type: type,
+        visible: true,
+        locked: false,
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        rotation: 0,
+        opacity: 1
+    };
+    
+    layers.push(layer);
+    selectedLayer = layer;
+    updateLayersList();
+    redrawCanvas();
 }
 
 function updateLayersList() {
@@ -476,9 +511,15 @@ function updateLayersList() {
     layersList.innerHTML = '';
     
     layers.forEach(layer => {
-        const layerElement = document.createElement('div');
-        layerElement.className = 'layer-item';
-        layerElement.innerHTML = `
+        const layerItem = document.createElement('div');
+        layerItem.className = 'layer-item';
+        layerItem.onclick = () => selectLayer(layer);
+        
+        if (selectedLayer && selectedLayer.id === layer.id) {
+            layerItem.style.background = 'var(--primary-500)';
+        }
+        
+        layerItem.innerHTML = `
             <div class="layer-controls">
                 <button class="layer-toggle" onclick="toggleLayerVisibility(${layer.id})">
                     <i class="fas fa-${layer.visible ? 'eye' : 'eye-slash'}"></i>
@@ -492,8 +533,15 @@ function updateLayersList() {
                 <i class="fas fa-trash"></i>
             </button>
         `;
-        layersList.appendChild(layerElement);
+        
+        layersList.appendChild(layerItem);
     });
+}
+
+function selectLayer(layer) {
+    selectedLayer = layer;
+    updateLayersList();
+    updatePropertiesPanel();
 }
 
 function toggleLayerVisibility(layerId) {
@@ -515,247 +563,166 @@ function toggleLayerLock(layerId) {
 
 function deleteLayer(layerId) {
     layers = layers.filter(l => l.id !== layerId);
-    if (currentLayer && currentLayer.id === layerId) {
-        currentLayer = layers[layers.length - 1] || null;
+    if (selectedLayer && selectedLayer.id === layerId) {
+        selectedLayer = layers.length > 0 ? layers[layers.length - 1] : null;
     }
     updateLayersList();
     redrawCanvas();
 }
 
-// Text functions
-function addTextLayer() {
-    const text = prompt('Enter text:');
-    if (text) {
-        const newLayer = {
-            id: Date.now(),
-            name: 'Text Layer',
-            type: 'text',
-            visible: true,
-            locked: false,
-            opacity: 1,
-            data: {
-                text: text,
-                x: 100,
-                y: 100,
-                font: 'Arial',
-                fontSize: 24,
-                color: '#000000'
-            }
-        };
-        
-        layers.push(newLayer);
-        currentLayer = newLayer;
-        updateLayersList();
+function rotateLayer(layer, angle) {
+    if (layer) {
+        layer.rotation = (layer.rotation + angle) % 360;
         redrawCanvas();
-        
-        showNotification('Text layer added!', 'success');
+        updatePropertiesPanel();
     }
 }
 
-function addTextAtPosition(x, y) {
-    const text = prompt('Enter text:');
-    if (text) {
-        const newLayer = {
-            id: Date.now(),
-            name: 'Text Layer',
-            type: 'text',
-            visible: true,
-            locked: false,
-            opacity: 1,
-            data: {
-                text: text,
-                x: x,
-                y: y,
-                font: 'Arial',
-                fontSize: 24,
-                color: '#000000'
-            }
-        };
-        
-        layers.push(newLayer);
-        currentLayer = newLayer;
-        updateLayersList();
-        redrawCanvas();
-    }
-}
-
-// Canvas redraw
+// Canvas functions
 function redrawCanvas() {
     if (!ctx) return;
     
     // Clear canvas
-    ctx.fillStyle = '#f1f5f9';
+    ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     // Draw layers
     layers.forEach(layer => {
-        if (layer.visible) {
-            drawLayer(layer);
+        if (!layer.visible) return;
+        
+        ctx.save();
+        ctx.globalAlpha = layer.opacity;
+        
+        if (layer.rotation !== 0) {
+            ctx.translate(layer.x + layer.width / 2, layer.y + layer.height / 2);
+            ctx.rotate(layer.rotation * Math.PI / 180);
+            ctx.translate(-(layer.x + layer.width / 2), -(layer.y + layer.height / 2));
         }
+        
+        switch (layer.type) {
+            case 'image':
+                if (layer.image) {
+                    ctx.drawImage(layer.image, layer.x, layer.y, layer.width, layer.height);
+                }
+                break;
+            case 'text':
+                ctx.font = `${layer.fontSize}px ${layer.fontFamily}`;
+                ctx.fillStyle = layer.color;
+                ctx.fillText(layer.text, layer.x, layer.y);
+                break;
+        }
+        
+        ctx.restore();
     });
 }
 
-function drawLayer(layer) {
-    if (!ctx) return;
+// Properties panel
+function updatePropertiesPanel() {
+    if (!selectedLayer) return;
     
-    ctx.save();
-    ctx.globalAlpha = layer.opacity;
+    const posX = document.getElementById('posX');
+    const posY = document.getElementById('posY');
+    const width = document.getElementById('width');
+    const height = document.getElementById('height');
+    const rotation = document.getElementById('rotation');
+    const opacity = document.getElementById('opacity');
     
-    switch (layer.type) {
-        case 'text':
-            drawTextLayer(layer);
-            break;
-        case 'image':
-            drawImageLayer(layer);
-            break;
-    }
-    
-    ctx.restore();
+    if (posX) posX.value = selectedLayer.x;
+    if (posY) posY.value = selectedLayer.y;
+    if (width) width.value = selectedLayer.width;
+    if (height) height.value = selectedLayer.height;
+    if (rotation) rotation.value = selectedLayer.rotation;
+    if (opacity) opacity.value = selectedLayer.opacity * 100;
 }
 
-function drawTextLayer(layer) {
-    const data = layer.data;
-    ctx.font = `${data.fontSize}px ${data.font}`;
-    ctx.fillStyle = data.color;
-    ctx.fillText(data.text, data.x, data.y);
-}
-
-function drawImageLayer(layer) {
-    const data = layer.data;
-    if (data.image) {
-        ctx.drawImage(data.image, data.x, data.y, data.width, data.height);
-    }
-}
-
-// Tool-specific functions
-function enableCropMode() {
-    showNotification('Crop mode enabled. Click and drag to select area.', 'info');
-}
-
-function showFiltersPanel() {
-    showNotification('Filters panel coming soon!', 'info');
-}
-
-function showAITools() {
-    showNotification('AI tools coming soon!', 'info');
-}
-
-// Project management
+// Project functions
 function saveProject() {
-    if (!isLoggedIn) {
-        showLogin();
-        return;
-    }
-    
-    const projectData = {
-        id: Date.now(),
-        name: 'Untitled Project',
+    const project = {
+        name: 'EditX Project',
         layers: layers,
         canvas: {
             width: canvas.width,
             height: canvas.height
         },
-        timestamp: new Date().toISOString()
+        timestamp: Date.now()
     };
     
-    localStorage.setItem('editx_project_' + projectData.id, JSON.stringify(projectData));
+    localStorage.setItem('editx_project', JSON.stringify(project));
     showNotification('Project saved successfully!', 'success');
 }
 
 function exportProject() {
     if (!canvas) return;
     
-    // Create download link
+    // Create a temporary link to download the canvas as PNG
     const link = document.createElement('a');
     link.download = 'editx-export.png';
     link.href = canvas.toDataURL();
     link.click();
     
-    showNotification('Project exported successfully!', 'success');
+    showNotification('Project exported as PNG!', 'success');
+}
+
+function importAsset() {
+    importFile();
 }
 
 // Utility functions
-function showLoadingState() {
-    const submitBtn = document.querySelector('#authForm button[type="submit"]');
-    const submitText = document.getElementById('submitText');
-    
-    submitBtn.disabled = true;
-    submitText.innerHTML = '<div class="spinner"></div> Loading...';
-}
-
-function hideLoadingState() {
-    const submitBtn = document.querySelector('#authForm button[type="submit"]');
-    const submitText = document.getElementById('submitText');
-    const isSignUp = document.getElementById('nameField').style.display !== 'none';
-    
-    submitBtn.disabled = false;
-    submitText.textContent = isSignUp ? 'Create Account' : 'Sign In';
-}
-
 function showNotification(message, type = 'info') {
     // Create notification element
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
-    notification.innerHTML = `
-        <div class="notification-content">
-            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-            <span>${message}</span>
-        </div>
-        <button onclick="this.parentElement.remove()">
-            <i class="fas fa-times"></i>
-        </button>
-    `;
-    
-    // Add styles
     notification.style.cssText = `
         position: fixed;
         top: 20px;
         right: 20px;
-        background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-        color: white;
-        padding: 1rem;
+        padding: 1rem 1.5rem;
         border-radius: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        color: white;
+        font-weight: 500;
         z-index: 3000;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        max-width: 300px;
         animation: slideIn 0.3s ease-out;
+        max-width: 300px;
     `;
     
+    // Set background color based on type
+    switch (type) {
+        case 'success':
+            notification.style.background = 'var(--success)';
+            break;
+        case 'error':
+            notification.style.background = 'var(--error)';
+            break;
+        case 'warning':
+            notification.style.background = 'var(--warning)';
+            break;
+        default:
+            notification.style.background = 'var(--info)';
+    }
+    
+    notification.textContent = message;
+    
+    // Add to page
     document.body.appendChild(notification);
     
-    // Auto remove after 5 seconds
+    // Remove after 3 seconds
     setTimeout(() => {
-        if (notification.parentElement) {
-            notification.remove();
-        }
-    }, 5000);
+        notification.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, 3000);
 }
 
 function playDemo() {
-    showNotification('Demo video coming soon!', 'info');
+    showNotification('Demo video would play here', 'info');
 }
 
-// Add CSS for spinner and notifications
+// Add CSS animations for notifications
 const style = document.createElement('style');
 style.textContent = `
-    .spinner {
-        display: inline-block;
-        width: 1rem;
-        height: 1rem;
-        border: 2px solid transparent;
-        border-top: 2px solid currentColor;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    
     @keyframes slideIn {
         from {
             transform: translateX(100%);
@@ -767,71 +734,15 @@ style.textContent = `
         }
     }
     
-    .notification-content {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex: 1;
-    }
-    
-    .notification button {
-        background: none;
-        border: none;
-        color: white;
-        cursor: pointer;
-        padding: 0.25rem;
-        border-radius: 0.25rem;
-        transition: background-color 0.2s ease;
-    }
-    
-    .notification button:hover {
-        background: rgba(255, 255, 255, 0.1);
+    @keyframes slideOut {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
     }
 `;
 document.head.appendChild(style);
-
-// Asset management
-function importAsset() {
-    showNotification('Asset import coming soon!', 'info');
-}
-
-// Export functions
-function exportProject() {
-    if (!canvas) return;
-    
-    // Create download link
-    const link = document.createElement('a');
-    link.download = 'editx-export.png';
-    link.href = canvas.toDataURL();
-    link.click();
-    
-    showNotification('Project exported successfully!', 'success');
-}
-
-// Keyboard shortcuts
-document.addEventListener('keydown', function(e) {
-    // Ctrl/Cmd + S to save
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        saveProject();
-    }
-    
-    // Ctrl/Cmd + O to open
-    if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
-        e.preventDefault();
-        importFile();
-    }
-    
-    // Ctrl/Cmd + E to export
-    if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-        e.preventDefault();
-        exportProject();
-    }
-    
-    // Delete key to delete selected layer
-    if (e.key === 'Delete' && currentLayer) {
-        deleteLayer(currentLayer.id);
-    }
-});
-
-console.log('🎨 EditX Studio JavaScript loaded successfully!');
